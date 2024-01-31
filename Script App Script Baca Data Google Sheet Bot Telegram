@@ -1,0 +1,137 @@
+// kredensial
+const spreadsheetId      = 'GOOGLE_SHEET_UD'
+const dataOrderSheetName = 'NAMA_SHEET'
+const logSheetName       = 'Log'
+
+const botHandle      = 'USERNAME_BOT'
+const botToken       = 'BOT_TOKEN'
+const telegramApiUrl = `https://api.telegram.org/bot${botToken}`;
+const appsScriptUrl  = 'URL_SCRIPT'; // URL Google Apps Script yang berfungsi sebagai webhook
+
+function log(logMessage = '') {
+  const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  const sheet       = spreadsheet.getSheetByName(logSheetName);
+  const lastRow     = sheet.getLastRow() + 1;
+  const today       = new Date();
+
+  sheet.insertRowAfter(lastRow);
+  sheet.getRange(`A${lastRow}`).setValue(today);
+  sheet.getRange(`B${lastRow}`).setValue(logMessage);
+}
+
+function sendTelegramMessage(chatId, replyToMessageId, textMessage) {
+  const url = `${telegramApiUrl}/sendMessage`;
+  const maxLength = 4096; // Batas karakter maksimum untuk pesan Telegram
+  
+  if (textMessage.length <= maxLength) {
+    // Kirim pesan langsung jika panjang pesan tidak melebihi batas
+    const data = {
+      parse_mode: 'HTML',
+      chat_id: chatId,
+      reply_to_message_id: replyToMessageId,
+      text: textMessage,
+      disable_web_page_preview: true,
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(data),
+    };
+
+    const response = UrlFetchApp.fetch(url, options).getContentText();
+    return response;
+  } else {
+    // Bagi pesan menjadi bagian-bagian yang lebih kecil dan kirimkan secara bertahap
+    const parts = [];
+    for (let i = 0; i < textMessage.length; i += maxLength) {
+      parts.push(textMessage.substring(i, i + maxLength));
+    }
+
+    parts.forEach((part, index) => {
+      const data = {
+        parse_mode: 'HTML',
+        chat_id: chatId,
+        reply_to_message_id: replyToMessageId,
+        text: index === 0 ? part : `[continued] ${part}`,
+        disable_web_page_preview: true,
+      };
+
+      const options = {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(data),
+      };
+
+      UrlFetchApp.fetch(url, options);
+    });
+  }
+}
+
+
+function CARI(searchQuery) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = spreadsheet.getSheetByName(dataOrderSheetName);
+    const lastRow = sheet.getLastRow();
+    const lastColumn = sheet.getLastColumn();
+
+    const data = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues(); // Mengambil data dari baris 2 sampai terakhir
+
+    const filteredData = data.filter(row => {
+      return searchQuery.split('*').every(keyword => {
+        return row.some(cell => cell.toString().toLowerCase().includes(keyword.trim().toLowerCase()));
+      });
+    });
+
+    return filteredData.map(row => row.join(' | ')).map(chat => `${chat}\n____________________________`);
+
+  } catch (err) {
+    log(err);
+    return []; // Mengembalikan array kosong jika terjadi kesalahan
+  }
+}
+
+
+
+
+
+function doPost(e) {
+  try {
+    const contents = JSON.parse(e.postData.contents);
+    const receivedTextMessage = contents.message.text.trim().toLowerCase();
+    let messageReply = '';
+
+    if (receivedTextMessage === '/start') {
+      messageReply = 'Selamat Datang !!!!! Status Bot aktif,sekarang bisa anda gunakan,\n Gunakan command /help untuk cara menggunakannya';
+    } else if (receivedTextMessage === '/help') {
+      messageReply = 'Untuk <b>cari kata kunci</b> gunakan format \n /cari [spasi] [nama barang] \n .c [spasi] [nama barang] \n [nama barang]';
+    } else if (receivedTextMessage.startsWith('/cari') || receivedTextMessage.startsWith('.c') || receivedTextMessage.startsWith('')) {
+    // Memisahkan kata kunci dari pesan
+    let keyword = '';
+    if (receivedTextMessage.startsWith('/cari')) {
+        keyword = receivedTextMessage.replace('/cari', '').trim();
+    } else if (receivedTextMessage.startsWith('.c')) {
+        keyword = receivedTextMessage.replace('.c', '').trim();
+    }  else if (receivedTextMessage.startsWith('')) {
+        keyword = receivedTextMessage.replace('', '').trim();
+      
+    }
+
+
+      // Memanggil fungsi CARI dan menyimpan hasilnya
+      const result = CARI(keyword);
+      
+
+      // Menyusun pesan balasan berdasarkan hasil pencarian
+      messageReply = result.length > 0 ? result.join('\n') : 'Tidak ada hasil yang ditemukan.';
+    } else {
+      messageReply = 'Pesan yang Anda kirim tidak sesuai format. Gunakan command /help untuk bantuan';
+    }
+
+    sendTelegramMessage(contents.message.chat.id, contents.message.message_id, messageReply);
+  } catch (err) {
+    log(err);
+  }
+}
+
