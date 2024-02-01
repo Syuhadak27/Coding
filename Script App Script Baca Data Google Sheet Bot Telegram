@@ -1,12 +1,12 @@
 // kredensial
-const spreadsheetId      = 'GOOGLE_SHEET_UD'
-const dataOrderSheetName = 'NAMA_SHEET'
+const spreadsheetId      = 'SPREADSHEET_ID'
+const dataOrderSheetName = 'SHEET_NAME'
 const logSheetName       = 'Log'
 
 const botHandle      = 'USERNAME_BOT'
-const botToken       = 'BOT_TOKEN'
+const botToken       = 'TOKEN_BOT'
 const telegramApiUrl = `https://api.telegram.org/bot${botToken}`;
-const appsScriptUrl  = 'URL_SCRIPT'; // URL Google Apps Script yang berfungsi sebagai webhook
+const appsScriptUrl  = 'URL_WEB_FROM_DEPLOY'; // URL Google Apps Script yang berfungsi sebagai webhook
 
 function log(logMessage = '') {
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
@@ -19,11 +19,12 @@ function log(logMessage = '') {
   sheet.getRange(`B${lastRow}`).setValue(logMessage);
 }
 
+const maxLengthWithMargin = 4000; // Batas karakter maksimum dengan margin kecil
+
 function sendTelegramMessage(chatId, replyToMessageId, textMessage) {
   const url = `${telegramApiUrl}/sendMessage`;
-  const maxLength = 4096; // Batas karakter maksimum untuk pesan Telegram
-  
-  if (textMessage.length <= maxLength) {
+
+  if (textMessage.length <= maxLengthWithMargin) {
     // Kirim pesan langsung jika panjang pesan tidak melebihi batas
     const data = {
       parse_mode: 'HTML',
@@ -44,8 +45,8 @@ function sendTelegramMessage(chatId, replyToMessageId, textMessage) {
   } else {
     // Bagi pesan menjadi bagian-bagian yang lebih kecil dan kirimkan secara bertahap
     const parts = [];
-    for (let i = 0; i < textMessage.length; i += maxLength) {
-      parts.push(textMessage.substring(i, i + maxLength));
+    for (let i = 0; i < textMessage.length; i += maxLengthWithMargin) {
+      parts.push(textMessage.substring(i, i + maxLengthWithMargin));
     }
 
     parts.forEach((part, index) => {
@@ -69,30 +70,40 @@ function sendTelegramMessage(chatId, replyToMessageId, textMessage) {
 }
 
 
+
 function CARI(searchQuery) {
   try {
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
     const sheet = spreadsheet.getSheetByName(dataOrderSheetName);
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
+    
+    const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
 
     const data = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues(); // Mengambil data dari baris 2 sampai terakhir
 
     const filteredData = data.filter(row => {
       return searchQuery.split('*').every(keyword => {
-        return row.some(cell => cell.toString().toLowerCase().includes(keyword.trim().toLowerCase()));
+        return row.some((cell, index) => {
+          return cell.toString().toLowerCase().includes(keyword.trim().toLowerCase());
+        });
       });
     });
 
-    return filteredData.map(row => row.join(' | ')).map(chat => `${chat}\n____________________________`);
+    const formattedData = filteredData.map(row => {
+      const lastColumnValue = row[lastColumn - 1]; // Mengambil nilai kolom terakhir
+      const formattedLastColumnValue = "Rp. " + lastColumnValue.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      row[lastColumn - 1] = formattedLastColumnValue; // Memasukkan nilai yang diformat ke dalam array data
+      return row.join(' | ');
+    });
+
+    return formattedData.map(chat => `${chat}\n____________________________`);
 
   } catch (err) {
     log(err);
     return []; // Mengembalikan array kosong jika terjadi kesalahan
   }
 }
-
-
 
 
 
@@ -125,7 +136,7 @@ function doPost(e) {
 
       // Menyusun pesan balasan berdasarkan hasil pencarian
       messageReply = result.length > 0 ? result.join('\n') : 'Tidak ada hasil yang ditemukan.';
-    } else {
+    }  else {
       messageReply = 'Pesan yang Anda kirim tidak sesuai format. Gunakan command /help untuk bantuan';
     }
 
