@@ -1,13 +1,16 @@
 // kredensial
-const spreadsheetId      = 'SPREADSHEET_ID'
-const dataOrderSheetName = 'SHEET_NAME'
-const logSheetName       = 'Log'
+const spreadsheetId      = 'ID_SPREADSHEET'
+const dataOrderSheetName = 'database' //nama sheet
+const logSheetName       = 'Log' //nama sheet
 
 const botHandle      = 'USERNAME_BOT'
 const botToken       = 'TOKEN_BOT'
 const telegramApiUrl = `https://api.telegram.org/bot${botToken}`;
-const appsScriptUrl  = 'URL_WEB_FROM_DEPLOY'; // URL Google Apps Script yang berfungsi sebagai webhook
+const appsScriptUrl  = 'URL_HASIL_DEPLOY'; // URL Google Apps Script yang berfungsi sebagai webhook
 
+
+
+//untuk mengeirim log error
 function log(logMessage = '') {
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const sheet       = spreadsheet.getSheetByName(logSheetName);
@@ -54,7 +57,7 @@ function sendTelegramMessage(chatId, replyToMessageId, textMessage) {
         parse_mode: 'HTML',
         chat_id: chatId,
         reply_to_message_id: replyToMessageId,
-        text: index === 0 ? part : `[continued] ${part}`,
+        text: index === 0 ? part : `<b>[Continued]</b> ${part}`,
         disable_web_page_preview: true,
       };
 
@@ -76,6 +79,45 @@ function CARI(searchQuery) {
     const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
     const sheet = spreadsheet.getSheetByName(dataOrderSheetName);
     const lastRow = sheet.getLastRow();
+
+    // Mengambil data dari kolom A sampai E
+    const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues(); // Mengambil data dari baris 2 sampai terakhir dan dari kolom A sampai E
+
+    const filteredData = data.filter(row => {
+      return searchQuery.split('*').every(keyword => {
+        return row.some((cell, index) => {
+          return cell.toString().toLowerCase().includes(keyword.trim().toLowerCase());
+        });
+      });
+    });
+
+    const formattedData = filteredData.map(row => {
+      const lastColumnValue = row[4]; // Mengambil nilai kolom E (indeks ke-4)
+      const formattedLastColumnValue = "" + lastColumnValue.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      row[4] = formattedLastColumnValue; // Memasukkan nilai yang diformat ke dalam array data
+      return row.join(' | ');
+    });
+
+    return formattedData.map(chat => `${chat}\n____________________________`);
+
+  } catch (err) {
+    log(err);
+    return []; // Mengembalikan array kosong jika terjadi kesalahan
+  }
+}
+
+
+
+
+//##################### MEMBACA DARI SHEET LAIN #############################################################
+const sheetInput = "transaksi" //nama sheet yg diambil dari sheet lain
+const idSheetInput = "14XBlRZTRX38C4Bsynigx3tpFVJeS5J_nCtIIU4sxHMI" //id dari gsheet lainnya
+
+function CARI_inout(searchQuery) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(idSheetInput);
+    const sheet = spreadsheet.getSheetByName(sheetInput);
+    const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
     
     const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
@@ -91,9 +133,9 @@ function CARI(searchQuery) {
     });
 
     const formattedData = filteredData.map(row => {
-      const lastColumnValue = row[lastColumn - 1]; // Mengambil nilai kolom terakhir
-      const formattedLastColumnValue = "Rp. " + lastColumnValue.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-      row[lastColumn - 1] = formattedLastColumnValue; // Memasukkan nilai yang diformat ke dalam array data
+      const dateValue = new Date(row[0]); // Kolom pertama adalah tanggal
+      const formattedDate = Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'dd-MM-yyyy');
+      row[0] = formattedDate; // Mengganti nilai tanggal dengan format yang diinginkan
       return row.join(' | ');
     });
 
@@ -107,6 +149,61 @@ function CARI(searchQuery) {
 
 
 
+// Fungsi LIHAT_CODE
+function LIHAT_CODE(searchQuery) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = spreadsheet.getSheetByName(dataOrderSheetName);
+    const lastRow = sheet.getLastRow();
+
+    // Mengambil data dari kolom A sampai E
+    const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues(); // Mengambil data dari baris 2 sampai terakhir dan dari kolom A sampai E
+
+    const filteredData = data.filter(row => {
+      return searchQuery.split('*').every(keyword => {
+        return row.some((cell, index) => {
+          return cell.toString().toLowerCase().includes(keyword.trim().toLowerCase());
+        });
+      });
+    });
+
+    const formattedData = filteredData.map(row => {
+      const lastColumnValue = row[4]; // Mengambil nilai kolom E (indeks ke-4)
+      const formattedLastColumnValue = "" + lastColumnValue.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      row[4] = formattedLastColumnValue; // Memasukkan nilai yang diformat ke dalam array data
+      return row.join(' | ');
+    });
+
+    return formattedData.map(chat => `${chat}\n____________________________`);
+
+  } catch (err) {
+    log(err);
+    return []; // Mengembalikan array kosong jika terjadi kesalahan
+  }
+}
+
+//###### ORDERSHEET ########
+function simpanPesananKeSheet(orderText) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById("ID_SPREADSHEET_KEDUA");
+    const sheet = spreadsheet.getSheetByName("order"); // Menggunakan nama sheet "ORDER"
+    let lastRow = sheet.getLastRow(); // Dapatkan nomor baris terakhir
+
+    const orderItems = orderText.split('\n');
+
+    orderItems.forEach((item, index) => {
+      lastRow++; // Tambahkan 1 ke nomor baris terakhir untuk setiap item pesanan baru
+      sheet.getRange(lastRow, 2).setValue(item); // Set nilai item di kolom B dan baris yang baru
+    });
+
+    return true;
+  } catch (err) {
+    log(err);
+    return false;
+  }
+}
+
+
 function doPost(e) {
   try {
     const contents = JSON.parse(e.postData.contents);
@@ -114,35 +211,73 @@ function doPost(e) {
     let messageReply = '';
 
     if (receivedTextMessage === '/start') {
-      messageReply = 'Selamat Datang !!!!! Status Bot aktif,sekarang bisa anda gunakan,\n Gunakan command /help untuk cara menggunakannya';
+      messageReply = 'Selamat Datang !!!!! Status Bot aktif, sekarang bisa anda gunakan,\n Gunakan command /help untuk cara menggunakannya';
     } else if (receivedTextMessage === '/help') {
-      messageReply = 'Untuk <b>cari kata kunci</b> gunakan format \n /cari [spasi] [nama barang] \n .c [spasi] [nama barang] \n [nama barang]';
-    } else if (receivedTextMessage.startsWith('/cari') || receivedTextMessage.startsWith('.c') || receivedTextMessage.startsWith('')) {
-    // Memisahkan kata kunci dari pesan
-    let keyword = '';
-    if (receivedTextMessage.startsWith('/cari')) {
-        keyword = receivedTextMessage.replace('/cari', '').trim();
-    } else if (receivedTextMessage.startsWith('.c')) {
-        keyword = receivedTextMessage.replace('.c', '').trim();
-    }  else if (receivedTextMessage.startsWith('')) {
-        keyword = receivedTextMessage.replace('', '').trim();
-      
-    }
+      messageReply = 'Cara menggunakan bot untuk pencarian barang \n -Masukkan nama Barang yang ingin anda cari.\n\nContoh: "nama barang" \n \n \n -Untuk melihat keluar masuk barang gunakan cara sbg berikut \n \n /inout [nama barang] \n Contoh : /inout lemari es poly \n Akan menampilkan data masuk/keluar nama barang lemari es dari 01/01/2024 sampai hari ini. :) \n \n \n Data bot diperbarui setiap hari pukul 21:00, data /inout dimulai dari 01/01/2024';
+    } else if (receivedTextMessage.startsWith('.kode')) {
+      const hasilkode = receivedTextMessage.replace('.kode','').trim();
+      //jika setelah format /kode tidak di ikuti kata kunci
+      if(!hasilkode) {
+        messageReply = 'format salah, gunakan .kode [nama barang]';
+      } else {
+        // Memanggil fungsi LIHAT_CODE dan menyimpan hasilnya
+        const result_code = LIHAT_CODE(hasilkode);
+        // Menyusun pesan balasan berdasarkan hasil pencarian
+        messageReply = result_code.length > 0 ? result_code.join('\n') : 'Tidak ada hasil yang ditemukan.';
+      }
+    } else if (receivedTextMessage.startsWith('/inout')) {
+      // Memisahkan kata kunci dari pesan
+      const keyword = receivedTextMessage.replace('/inout', '').trim();
 
-
+      if (!keyword) {
+        // Jika tidak ada kata kunci setelah /inout, tampilkan pesan format salah
+        messageReply = 'Format salah, gunakan format /inout [nama barang]';
+      } else {
+        // Memanggil fungsi CARI_inout dan menyimpan hasilnya
+        const hasil = CARI_inout(keyword);
+        // Menyusun pesan balasan berdasarkan hasil pencarian
+        messageReply = hasil.length > 0 ? hasil.join('\n') : 'Tidak ada barang yang ditemukan.';
+      }
+    } else if (receivedTextMessage.startsWith('/order')) {
+      const orderText = receivedTextMessage.replace('/order', '').trim();
+      if (!orderText) {
+        messageReply = 'Format pesanan salah. Gunakan format /order [barang1] [barang2] ...';
+      } else {
+        const success = simpanPesananKeSheet(orderText);
+        messageReply = success ? 'Pesanan berhasil disimpan.' : 'Terjadi kesalahan saat menyimpan pesanan.';
+      } 
+    } else {
       // Memanggil fungsi CARI dan menyimpan hasilnya
-      const result = CARI(keyword);
-      
-
+      const result = CARI(receivedTextMessage);
       // Menyusun pesan balasan berdasarkan hasil pencarian
       messageReply = result.length > 0 ? result.join('\n') : 'Tidak ada hasil yang ditemukan.';
-    }  else {
-      messageReply = 'Pesan yang Anda kirim tidak sesuai format. Gunakan command /help untuk bantuan';
     }
+
+    // Memanggil fungsi logAkses dengan menyediakan informasi yang diperlukan
+    logAkses(contents.message.from.username, receivedTextMessage);
 
     sendTelegramMessage(contents.message.chat.id, contents.message.message_id, messageReply);
   } catch (err) {
     log(err);
   }
 }
+
+function logAkses(namaPengguna, kataKunci) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById("ID_SPREADSHEET_KEDUA");
+    const sheet = spreadsheet.getSheetByName("akses"); // Menggunakan nama sheet "Log"
+    const lastRow = sheet.getLastRow() + 1;
+    const today = new Date();
+
+    sheet.insertRowAfter(lastRow);
+    sheet.getRange(`A${lastRow}`).setValue(today);
+    sheet.getRange(`B${lastRow}`).setValue(namaPengguna);
+    sheet.getRange(`C${lastRow}`).setValue(kataKunci);
+
+  } catch (err) {
+    log(err);
+  }
+}
+
+
 
